@@ -117,6 +117,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [replyAutomation, setReplyAutomation] = useState<{ intent?: string | null; campaignId?: string | null; leadId?: string | null } | null>(null);
 
   async function loadInbox() {
     try {
@@ -217,6 +218,43 @@ export default function Home() {
       await Promise.all([loadMessages(active.id), loadInbox()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Message could not be saved.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+
+  async function simulateCustomerReply() {
+    const body = composer.trim();
+    if (!body || !active || sending) return;
+
+    setSending(true);
+    setError("");
+    setReplyAutomation(null);
+
+    try {
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: active.id,
+          direction: "INBOUND",
+          channel: active.channel,
+          body,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Customer reply could not be saved.");
+      }
+
+      setComposer("");
+      setReplyAutomation(payload.replyAutomation ?? null);
+      await Promise.all([loadMessages(active.id), loadInbox()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Customer reply could not be saved.");
     } finally {
       setSending(false);
     }
@@ -416,6 +454,18 @@ export default function Home() {
                 <button>Create lead</button>
               </div>
 
+              {replyAutomation && (
+                <div className="replyAutomationBar">
+                  <strong>{replyAutomation.intent || "GENERAL"}</strong>
+                  <span>
+                    {replyAutomation.campaignId
+                      ? "Campaign response detected"
+                      : "General customer reply"}
+                    {replyAutomation.leadId ? " · Lead created" : ""}
+                  </span>
+                </div>
+              )}
+
               {error && <div className="inlineError">{error}</div>}
 
               <div className="composer">
@@ -437,6 +487,15 @@ export default function Home() {
                   <FileText size={15} /> Catalogue
                 </button>
                 <button className="quickAction">Quotation</button>
+                <button
+                  className="quickAction simulateReply"
+                  type="button"
+                  disabled={sending || !composer.trim()}
+                  onClick={simulateCustomerReply}
+                  title="Development test: save this text as a customer reply"
+                >
+                  Customer reply
+                </button>
                 <button
                   className="sendButton"
                   aria-label="Send message"
