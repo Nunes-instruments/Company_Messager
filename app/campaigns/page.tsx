@@ -90,13 +90,14 @@ export default function CampaignsPage() {
           type: campaignType,
           message: campaignMessage.trim(),
           channel,
+          recipientCustomerIds: audience.map((customer) => customer.id),
         }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error ?? "Could not create campaign");
       setCampaignName("");
       setCampaignMessage("");
-      setNotice("Campaign draft created successfully.");
+      setNotice(`Campaign draft created with ${audience.length} eligible recipients.`);
       await loadCampaigns();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not create campaign");
