@@ -11,9 +11,17 @@ export function canContactCustomer(
   if (customer.status === "DO_NOT_CONTACT") return false;
   if (customer.optOuts?.some((item) => item.channel === channel)) return false;
 
-  if (channel === "WHATSAPP") return customer.consentWhatsApp;
-  if (channel === "EMAIL") return customer.consentEmail;
-  if (channel === "NUNES_CONNECT") return customer.consentPush;
+  if (channel === "WHATSAPP") {
+    return Boolean(customer.consentWhatsApp && customer.phone?.trim());
+  }
+
+  if (channel === "EMAIL") {
+    return Boolean(customer.consentEmail && customer.email?.trim());
+  }
+
+  if (channel === "NUNES_CONNECT") {
+    return customer.consentPush;
+  }
 
   return false;
 }
