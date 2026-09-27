@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { campaignCreateSchema } from "@/lib/validators";
+import { requireUser } from "@/lib/auth";
 
 export async function GET() {
   const campaigns = await db.campaign.findMany({
@@ -12,6 +13,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  try {
+    await requireUser(["ADMIN", "MANAGER"]);
+  } catch {
+    return NextResponse.json({ error: "Manager or Admin access required" }, { status: 403 });
+  }
+
   const parsed = campaignCreateSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json(
