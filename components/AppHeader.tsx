@@ -5,6 +5,7 @@ import {
   Bell,
   Megaphone,
   MessageCircleMore,
+  Target,
   Settings,
   ShieldCheck,
   Users,
@@ -14,7 +15,7 @@ import {
 export default function AppHeader({
   active,
 }: {
-  active: "messages" | "customers" | "campaigns" | "service" | "calibration";
+  active: "messages" | "customers" | "leads" | "campaigns" | "service" | "calibration";
 }) {
   return (
     <header className="topbar">
@@ -31,6 +32,9 @@ export default function AppHeader({
         </Link>
         <Link className={active === "customers" ? "navActive" : ""} href="/customers">
           <Users size={18} /> Customers
+        </Link>
+        <Link className={active === "leads" ? "navActive" : ""} href="/leads">
+          <Target size={18} /> Leads
         </Link>
         <Link className={active === "campaigns" ? "navActive" : ""} href="/campaigns">
           <Megaphone size={18} /> Campaigns
