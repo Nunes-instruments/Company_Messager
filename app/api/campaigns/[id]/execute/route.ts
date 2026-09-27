@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { canContactCustomer } from "@/lib/campaign-eligibility";
 import { providerConfigured } from "@/lib/providers";
+import { requireUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,13 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  let actor;
+  try {
+    actor = await requireUser(["ADMIN", "MANAGER"]);
+  } catch {
+    return NextResponse.json({ error: "Manager or Admin access required" }, { status: 403 });
+  }
+
   const { id } = await context.params;
   const body = await request.json().catch(() => ({}));
   const requestedBatch = Number(body?.batchSize ?? 50);
@@ -154,6 +162,7 @@ export async function POST(
 
         await tx.auditLog.create({
           data: {
+            userId: actor.id,
             customerId: customer.id,
             action: "CAMPAIGN_MESSAGE_SENT",
             entityType: "Campaign",
