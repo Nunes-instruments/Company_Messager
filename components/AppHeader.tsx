@@ -1,9 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Megaphone, MessageCircleMore, Settings, ShieldCheck, Wrench } from "lucide-react";
+import {
+  Bell,
+  Megaphone,
+  MessageCircleMore,
+  Settings,
+  ShieldCheck,
+  Users,
+  Wrench,
+} from "lucide-react";
 
-export default function AppHeader({ active }: { active: "messages" | "campaigns" | "service" | "calibration" }) {
+export default function AppHeader({
+  active,
+}: {
+  active: "messages" | "customers" | "campaigns" | "service" | "calibration";
+}) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -16,6 +28,9 @@ export default function AppHeader({ active }: { active: "messages" | "campaigns"
       <nav className="mainNav">
         <Link className={active === "messages" ? "navActive" : ""} href="/">
           <MessageCircleMore size={18} /> Messages
+        </Link>
+        <Link className={active === "customers" ? "navActive" : ""} href="/customers">
+          <Users size={18} /> Customers
         </Link>
         <Link className={active === "campaigns" ? "navActive" : ""} href="/campaigns">
           <Megaphone size={18} /> Campaigns
