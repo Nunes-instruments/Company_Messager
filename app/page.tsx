@@ -282,6 +282,9 @@ export default function Home() {
           <Link href="/customers">
             <Users size={18} /> Customers
           </Link>
+          <Link href="/leads">
+            <Target size={18} /> Leads
+          </Link>
           <Link href="/campaigns">
             <Megaphone size={18} /> Campaigns
           </Link>
