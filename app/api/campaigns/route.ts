@@ -21,6 +21,8 @@ export async function POST(request: NextRequest) {
   }
 
   const data = parsed.data;
+  const recipientIds = Array.from(new Set(data.recipientCustomerIds ?? []));
+
   const campaign = await db.campaign.create({
     data: {
       name: data.name,
@@ -30,6 +32,14 @@ export async function POST(request: NextRequest) {
       channel: data.channel,
       scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
       status: data.scheduledAt ? "SCHEDULED" : "DRAFT",
+      recipients: recipientIds.length
+        ? {
+            create: recipientIds.map((customerId) => ({ customerId })),
+          }
+        : undefined,
+    },
+    include: {
+      _count: { select: { recipients: true } },
     },
   });
 
