@@ -35,6 +35,13 @@ export async function POST(request: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
+  if (existingAdmin?.passwordHash) {
+    return NextResponse.json(
+      { error: "Admin login is already configured" },
+      { status: 409 }
+    );
+  }
+
   let user;
 
   if (existingAdmin && !existingAdmin.passwordHash) {
