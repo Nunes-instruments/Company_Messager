@@ -1,7 +1,7 @@
 "use client";
 
 import AppHeader from "@/components/AppHeader";
-import { Check, MessageCircleMore, Search, UserPlus, X } from "lucide-react";
+import { Check, Copy, Link2, MessageCircleMore, Search, UserPlus, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Customer = {
@@ -46,6 +46,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const [portalLink, setPortalLink] = useState<string | null>(null);
 
   async function loadCustomers() {
     setLoading(true);
@@ -114,6 +115,53 @@ export default function CustomersPage() {
       setNotice(error instanceof Error ? error.message : "Could not create customer");
     } finally {
       setSaving(false);
+    }
+  }
+
+
+  async function createPortalLink(customerId: string) {
+    const secret = window.prompt(
+      "Enter the Nunes admin action secret to create a secure customer portal link:"
+    );
+
+    if (!secret) return;
+
+    setNotice("");
+    setPortalLink(null);
+
+    try {
+      const response = await fetch("/api/portal-links", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-action-secret": secret,
+        },
+        body: JSON.stringify({
+          customerId,
+          label: "Customer portal",
+          expiresInDays: 365,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Could not create customer portal link");
+      }
+
+      const absoluteUrl = new URL(payload.path, window.location.origin).toString();
+      setPortalLink(absoluteUrl);
+
+      try {
+        await navigator.clipboard.writeText(absoluteUrl);
+        setNotice("Secure customer portal link created and copied.");
+      } catch {
+        setNotice("Secure customer portal link created.");
+      }
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Could not create customer portal link"
+      );
     }
   }
 
@@ -195,6 +243,23 @@ export default function CustomersPage() {
 
           {notice && <div className="noticeBar">{notice}</div>}
 
+          {portalLink && (
+            <div className="portalLinkBar">
+              <div>
+                <strong>Customer portal link</strong>
+                <span>{portalLink}</span>
+              </div>
+              <button
+                onClick={async () => {
+                  await navigator.clipboard.writeText(portalLink);
+                  setNotice("Portal link copied.");
+                }}
+              >
+                <Copy size={15} /> Copy
+              </button>
+            </div>
+          )}
+
           <div className="customerTable">
             <div className="customerTableHead">
               <span>Customer</span><span>Contact</span><span>Industry / Location</span><span>Relationship</span><span>Action</span>
@@ -212,9 +277,14 @@ export default function CustomersPage() {
                   <span>{customer._count?.instruments ?? 0} instruments</span>
                   <span>{customer._count?.leads ?? 0} leads</span>
                 </div>
-                <button className="customerChatButton" onClick={() => startChat(customer.id)}>
-                  <MessageCircleMore size={16} /> Open chat
-                </button>
+                <div className="customerActions">
+                  <button className="customerChatButton" onClick={() => startChat(customer.id)}>
+                    <MessageCircleMore size={16} /> Chat
+                  </button>
+                  <button className="portalLinkButton" onClick={() => createPortalLink(customer.id)}>
+                    <Link2 size={16} /> Portal
+                  </button>
+                </div>
               </div>
             ))}
           </div>
