@@ -15,6 +15,7 @@ import {
   Sparkles,
   Wrench,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 type Conversation = {
@@ -130,18 +131,18 @@ export default function Home() {
         </div>
 
         <nav className="mainNav">
-          <button className="navActive">
+          <Link className="navActive" href="/">
             <MessageCircleMore size={18} /> Messages
-          </button>
-          <button>
+          </Link>
+          <Link href="/campaigns">
             <Megaphone size={18} /> Campaigns
-          </button>
-          <button>
+          </Link>
+          <Link href="/service">
             <Wrench size={18} /> Service
-          </button>
-          <button>
+          </Link>
+          <Link href="/calibration">
             <ShieldCheck size={18} /> Calibration
-          </button>
+          </Link>
         </nav>
 
         <div className="topActions">
