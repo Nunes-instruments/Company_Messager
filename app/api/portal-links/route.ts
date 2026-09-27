@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createPortalToken } from "@/lib/portal-token";
+import { requireUser } from "@/lib/auth";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -13,11 +14,11 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const configuredSecret = process.env.ADMIN_ACTION_SECRET;
-  const suppliedSecret = request.headers.get("x-admin-action-secret");
-
-  if (!configuredSecret || suppliedSecret !== configuredSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let actor;
+  try {
+    actor = await requireUser(["ADMIN", "MANAGER"]);
+  } catch {
+    return NextResponse.json({ error: "Manager or Admin access required" }, { status: 403 });
   }
 
   const parsed = schema.safeParse(await request.json());
@@ -42,12 +43,23 @@ export async function POST(request: NextRequest) {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + parsed.data.expiresInDays);
 
-  await db.customerPortalToken.create({
+  const portalAccess = await db.customerPortalToken.create({
     data: {
       customerId: customer.id,
       tokenHash,
       label: parsed.data.label ?? "Customer portal link",
       expiresAt,
+    },
+  });
+
+  await db.auditLog.create({
+    data: {
+      userId: actor.id,
+      customerId: customer.id,
+      action: "CUSTOMER_PORTAL_LINK_CREATED",
+      entityType: "CustomerPortalToken",
+      entityId: portalAccess.id,
+      metadata: { expiresAt },
     },
   });
 
