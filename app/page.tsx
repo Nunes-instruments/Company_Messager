@@ -16,6 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type Message = {
@@ -106,6 +107,8 @@ function daysUntil(value?: string | null) {
 }
 
 export default function Home() {
+  const searchParams = useSearchParams();
+  const requestedConversation = searchParams.get("conversation");
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -123,7 +126,12 @@ export default function Home() {
       const payload = await response.json();
       const rows: InboxConversation[] = payload.conversations ?? [];
       setConversations(rows);
-      setActiveId((current) => current || rows[0]?.id || "");
+      setActiveId((current) => {
+        if (requestedConversation && rows.some((row) => row.id === requestedConversation)) {
+          return requestedConversation;
+        }
+        return current || rows[0]?.id || "";
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load inbox.");
     } finally {
@@ -152,7 +160,7 @@ export default function Home() {
 
   useEffect(() => {
     loadInbox();
-  }, []);
+  }, [requestedConversation]);
 
   useEffect(() => {
     loadMessages(activeId);
