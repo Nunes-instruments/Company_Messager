@@ -16,108 +16,207 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-type Conversation = {
-  id: number;
-  name: string;
-  company: string;
-  preview: string;
-  time: string;
-  unread: number;
-  category: "Product" | "Service" | "Calibration";
-  initials: string;
+type Message = {
+  id: string;
+  direction: "INBOUND" | "OUTBOUND";
+  body: string;
+  status: string;
+  createdAt: string;
+  sentAt?: string | null;
 };
 
-const conversations: Conversation[] = [
-  {
-    id: 1,
-    name: "Arun Kumar",
-    company: "Apex Testing Labs",
-    preview: "Please send the calibration quotation.",
-    time: "09:42",
-    unread: 2,
-    category: "Calibration",
-    initials: "AK",
-  },
-  {
-    id: 2,
-    name: "Priya S",
-    company: "Vertex Instruments",
-    preview: "Do you have OHAUS AX224/E ready stock?",
-    time: "09:18",
-    unread: 1,
-    category: "Product",
-    initials: "PS",
-  },
-  {
-    id: 3,
-    name: "Mohammed Irfan",
-    company: "MI Engineering",
-    preview: "Machine is showing an error after startup.",
-    time: "Yesterday",
-    unread: 0,
-    category: "Service",
-    initials: "MI",
-  },
-  {
-    id: 4,
-    name: "Rakesh",
-    company: "Nova Pharma",
-    preview: "Send your latest laboratory catalogue.",
-    time: "Yesterday",
-    unread: 0,
-    category: "Product",
-    initials: "RK",
-  },
-];
+type Instrument = {
+  id: string;
+  productName: string;
+  brand?: string | null;
+  model?: string | null;
+  calibrationDue?: string | null;
+};
 
-const demoMessages = [
-  {
-    from: "customer",
-    text: "Good morning. We purchased an analytical balance from you last year.",
-    time: "09:34",
-  },
-  {
-    from: "nunes",
-    text: "Good morning, sir. Yes, we can see the instrument in your account.",
-    time: "09:35",
-  },
-  {
-    from: "customer",
-    text: "We need calibration support now. Can you send the quotation?",
-    time: "09:38",
-  },
-  {
-    from: "nunes",
-    text: "Certainly. Please confirm the model and quantity. We will prepare the calibration quotation.",
-    time: "09:40",
-  },
-];
+type Customer = {
+  id: string;
+  name: string;
+  company?: string | null;
+  city?: string | null;
+  state?: string | null;
+  industry?: string | null;
+  instruments: Instrument[];
+  calibrations: Array<{ id: string; dueDate: string; status: string }>;
+  serviceJobs: Array<{ id: string; jobNumber: string; status: string }>;
+  leads: Array<{ id: string; type: string; status: string; requirement: string }>;
+};
+
+type InboxConversation = {
+  id: string;
+  channel: "NUNES_CONNECT" | "EMAIL" | "WHATSAPP";
+  lastMessageAt?: string | null;
+  latestMessage?: Message | null;
+  customer: Customer;
+  assignedUser?: { id: string; name: string; email: string } | null;
+  messageCount: number;
+  leadCount: number;
+};
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+function categoryOf(conversation: InboxConversation) {
+  if (
+    conversation.customer.calibrations.some((item) =>
+      ["UPCOMING", "DUE_SOON", "OVERDUE"].includes(item.status)
+    )
+  ) {
+    return "Calibration";
+  }
+
+  if (
+    conversation.customer.serviceJobs.some((item) =>
+      ["OPEN", "IN_PROGRESS", "WAITING_CUSTOMER", "READY"].includes(item.status)
+    )
+  ) {
+    return "Service";
+  }
+
+  return "Product";
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function daysUntil(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  const diff = Math.ceil((date.getTime() - Date.now()) / 86400000);
+  return diff;
+}
 
 export default function Home() {
-  const [activeId, setActiveId] = useState(1);
+  const [conversations, setConversations] = useState<InboxConversation[]>([]);
+  const [activeId, setActiveId] = useState<string>("");
+  const [messages, setMessages] = useState<Message[]>([]);
   const [search, setSearch] = useState("");
+  const [composer, setComposer] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadInbox() {
+    try {
+      setError("");
+      const response = await fetch("/api/inbox", { cache: "no-store" });
+      if (!response.ok) throw new Error("Could not load customer inbox.");
+      const payload = await response.json();
+      const rows: InboxConversation[] = payload.conversations ?? [];
+      setConversations(rows);
+      setActiveId((current) => current || rows[0]?.id || "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load inbox.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadMessages(conversationId: string) {
+    if (!conversationId) {
+      setMessages([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/messages?conversationId=${encodeURIComponent(conversationId)}`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) throw new Error("Could not load messages.");
+      const payload = await response.json();
+      setMessages(payload.messages ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load messages.");
+    }
+  }
+
+  useEffect(() => {
+    loadInbox();
+  }, []);
+
+  useEffect(() => {
+    loadMessages(activeId);
+  }, [activeId]);
 
   const active =
     conversations.find((conversation) => conversation.id === activeId) ??
     conversations[0];
 
-  const filtered = useMemo(
-    () =>
-      conversations.filter((conversation) =>
-        [
-          conversation.name,
-          conversation.company,
-          conversation.preview,
-          conversation.category,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
-    [search]
-  );
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return conversations;
+
+    return conversations.filter((conversation) => {
+      const latest = conversation.latestMessage?.body ?? "";
+      return [
+        conversation.customer.name,
+        conversation.customer.company ?? "",
+        conversation.customer.industry ?? "",
+        latest,
+        categoryOf(conversation),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [conversations, search]);
+
+  async function sendMessage() {
+    const body = composer.trim();
+    if (!body || !active || sending) return;
+
+    setSending(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: active.id,
+          direction: "OUTBOUND",
+          channel: active.channel,
+          body,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error ?? "Message could not be saved.");
+      }
+
+      setComposer("");
+      await Promise.all([loadMessages(active.id), loadInbox()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Message could not be saved.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const activeCategory = active ? categoryOf(active) : "Product";
+  const primaryInstrument = active?.customer.instruments?.[0];
+  const calibrationDays = daysUntil(primaryInstrument?.calibrationDue);
 
   return (
     <main className="appShell">
@@ -185,165 +284,251 @@ export default function Home() {
           </div>
 
           <div className="conversationList">
-            {filtered.map((conversation) => (
-              <button
-                key={conversation.id}
-                className={
-                  "conversation " +
-                  (conversation.id === activeId ? "conversationActive" : "")
-                }
-                onClick={() => setActiveId(conversation.id)}
-              >
-                <div className="avatar">{conversation.initials}</div>
-                <div className="conversationBody">
-                  <div className="conversationTop">
-                    <strong>{conversation.name}</strong>
-                    <span>{conversation.time}</span>
+            {loading && <div className="emptyState">Loading customer inbox…</div>}
+            {!loading && error && conversations.length === 0 && (
+              <div className="emptyState">{error}</div>
+            )}
+            {!loading && !error && filtered.length === 0 && (
+              <div className="emptyState">No customer conversations yet.</div>
+            )}
+
+            {filtered.map((conversation) => {
+              const category = categoryOf(conversation);
+              return (
+                <button
+                  key={conversation.id}
+                  className={
+                    "conversation " +
+                    (conversation.id === activeId ? "conversationActive" : "")
+                  }
+                  onClick={() => setActiveId(conversation.id)}
+                >
+                  <div className="avatar">{initials(conversation.customer.name)}</div>
+                  <div className="conversationBody">
+                    <div className="conversationTop">
+                      <strong>{conversation.customer.name}</strong>
+                      <span>{formatTime(conversation.lastMessageAt)}</span>
+                    </div>
+                    <p className="company">
+                      {conversation.customer.company ?? "Individual customer"}
+                    </p>
+                    <div className="conversationBottom">
+                      <p>
+                        {conversation.latestMessage?.body ??
+                          `${category} customer conversation`}
+                      </p>
+                    </div>
                   </div>
-                  <p className="company">{conversation.company}</p>
-                  <div className="conversationBottom">
-                    <p>{conversation.preview}</p>
-                    {conversation.unread > 0 && (
-                      <span className="unread">{conversation.unread}</span>
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </aside>
 
         <section className="chatPanel">
-          <div className="chatHeader">
-            <div className="chatIdentity">
-              <div className="avatar large">{active.initials}</div>
-              <div>
-                <h2>{active.name}</h2>
-                <p>
-                  {active.company} · <span className="online">Active customer</span>
-                </p>
-              </div>
+          {!active ? (
+            <div className="emptyConversation">
+              <MessageCircleMore size={34} />
+              <h2>No conversation selected</h2>
+              <p>Add or receive a customer message to start using Nunes Connect.</p>
             </div>
-            <div className="chatActions">
-              <button aria-label="Search conversation">
-                <Search size={19} />
-              </button>
-              <button aria-label="More actions">
-                <MoreVertical size={19} />
-              </button>
-            </div>
-          </div>
-
-          <div className="contextStrip">
-            <span className={"status status" + active.category}>
-              {active.category}
-            </span>
-            <span>Customer since 2024</span>
-            <span>3 previous enquiries</span>
-            <button>View full history</button>
-          </div>
-
-          <div className="messages">
-            <div className="dateChip">Today</div>
-            {demoMessages.map((message, index) => (
-              <div
-                key={index}
-                className={
-                  "messageRow " + (message.from === "nunes" ? "messageOwn" : "")
-                }
-              >
-                <div className="bubble">
-                  <p>{message.text}</p>
-                  <span>{message.time}</span>
+          ) : (
+            <>
+              <div className="chatHeader">
+                <div className="chatIdentity">
+                  <div className="avatar large">{initials(active.customer.name)}</div>
+                  <div>
+                    <h2>{active.customer.name}</h2>
+                    <p>
+                      {active.customer.company ?? "Customer"} ·{" "}
+                      <span className="online">Live database customer</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="chatActions">
+                  <button aria-label="Search conversation">
+                    <Search size={19} />
+                  </button>
+                  <button aria-label="More actions">
+                    <MoreVertical size={19} />
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
 
-          <div className="aiBar">
-            <Sparkles size={18} />
-            <div>
-              <strong>AI suggestion</strong>
-              <span>
-                Customer is asking for calibration. Create a calibration lead and
-                prepare quotation.
-              </span>
-            </div>
-            <button>Create lead</button>
-          </div>
+              <div className="contextStrip">
+                <span className={"status status" + activeCategory}>
+                  {activeCategory}
+                </span>
+                <span>{active.messageCount} stored messages</span>
+                <span>{active.leadCount} linked leads</span>
+                <button>View full history</button>
+              </div>
 
-          <div className="composer">
-            <button className="composerIcon" aria-label="Attach file">
-              <Paperclip size={20} />
-            </button>
-            <input placeholder="Type a message to customer..." />
-            <button className="quickAction">
-              <FileText size={15} /> Catalogue
-            </button>
-            <button className="quickAction">Quotation</button>
-            <button className="sendButton" aria-label="Send message">
-              <Send size={19} />
-            </button>
-          </div>
+              <div className="messages">
+                <div className="dateChip">Conversation</div>
+                {messages.length === 0 && (
+                  <div className="emptyState">No stored messages in this conversation.</div>
+                )}
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={
+                      "messageRow " +
+                      (message.direction === "OUTBOUND" ? "messageOwn" : "")
+                    }
+                  >
+                    <div className="bubble">
+                      <p>{message.body}</p>
+                      <span>
+                        {formatTime(message.sentAt ?? message.createdAt)}
+                        {message.direction === "OUTBOUND"
+                          ? ` · ${message.status.toLowerCase()}`
+                          : ""}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="aiBar">
+                <Sparkles size={18} />
+                <div>
+                  <strong>AI next-action foundation</strong>
+                  <span>
+                    {activeCategory === "Calibration"
+                      ? "Calibration opportunity detected from the customer's instrument wallet."
+                      : activeCategory === "Service"
+                      ? "Active service requirement detected for this customer."
+                      : "Product enquiry/customer relationship available for follow-up."}
+                  </span>
+                </div>
+                <button>Create lead</button>
+              </div>
+
+              {error && <div className="inlineError">{error}</div>}
+
+              <div className="composer">
+                <button className="composerIcon" aria-label="Attach file">
+                  <Paperclip size={20} />
+                </button>
+                <input
+                  value={composer}
+                  onChange={(event) => setComposer(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  placeholder="Type a message to customer..."
+                />
+                <button className="quickAction">
+                  <FileText size={15} /> Catalogue
+                </button>
+                <button className="quickAction">Quotation</button>
+                <button
+                  className="sendButton"
+                  aria-label="Send message"
+                  disabled={sending || !composer.trim()}
+                  onClick={sendMessage}
+                >
+                  <Send size={19} />
+                </button>
+              </div>
+            </>
+          )}
         </section>
 
         <aside className="customerPanel">
-          <div className="customerCard">
-            <div className="avatar customerAvatar">{active.initials}</div>
-            <h3>{active.name}</h3>
-            <p>{active.company}</p>
-            <div className="customerTags">
-              <span>Existing Customer</span>
-              <span>High Value</span>
-            </div>
-          </div>
-
-          <div className="sideSection">
-            <div className="sideTitle">
-              <h4>Customer intelligence</h4>
-              <Sparkles size={17} />
-            </div>
-            <div className="metric">
-              <span>Relationship score</span>
-              <strong>92%</strong>
-            </div>
-            <div className="progress">
-              <div style={{ width: "92%" }} />
-            </div>
-          </div>
-
-          <div className="sideSection">
-            <h4>Recommended next action</h4>
-            <div className="recommendation">
-              <div className="recommendIcon">
-                <ShieldCheck size={19} />
+          {active && (
+            <>
+              <div className="customerCard">
+                <div className="avatar customerAvatar">
+                  {initials(active.customer.name)}
+                </div>
+                <h3>{active.customer.name}</h3>
+                <p>{active.customer.company ?? "Customer"}</p>
+                <div className="customerTags">
+                  <span>{active.customer.industry ?? "Existing Customer"}</span>
+                  <span>{active.channel.replace("_", " ")}</span>
+                </div>
               </div>
-              <div>
-                <strong>Calibration Service</strong>
-                <p>High match based on previous purchase.</p>
+
+              <div className="sideSection">
+                <div className="sideTitle">
+                  <h4>Customer intelligence</h4>
+                  <Sparkles size={17} />
+                </div>
+                <div className="metric">
+                  <span>Stored conversations</span>
+                  <strong>{active.messageCount}</strong>
+                </div>
+                <div className="progress">
+                  <div style={{ width: active.messageCount > 0 ? "78%" : "10%" }} />
+                </div>
               </div>
-            </div>
-            <button className="primaryWide">Promote to customer</button>
-          </div>
 
-          <div className="sideSection">
-            <h4>Instrument wallet</h4>
-            <div className="instrument">
-              <strong>OHAUS AX224/E</strong>
-              <span>Analytical Balance</span>
-              <p>Calibration due in 26 days</p>
-            </div>
-          </div>
+              <div className="sideSection">
+                <h4>Recommended next action</h4>
+                <div className="recommendation">
+                  <div className="recommendIcon">
+                    {activeCategory === "Service" ? (
+                      <Wrench size={19} />
+                    ) : (
+                      <ShieldCheck size={19} />
+                    )}
+                  </div>
+                  <div>
+                    <strong>
+                      {activeCategory === "Calibration"
+                        ? "Calibration Service"
+                        : activeCategory === "Service"
+                        ? "Service Follow-up"
+                        : "Product Follow-up"}
+                    </strong>
+                    <p>Suggested from the customer's current records.</p>
+                  </div>
+                </div>
+                <button className="primaryWide">Promote to customer</button>
+              </div>
 
-          <div className="sideSection">
-            <h4>Quick actions</h4>
-            <div className="quickGrid">
-              <button>Product</button>
-              <button>Service</button>
-              <button>Calibration</button>
-              <button>Campaign</button>
-            </div>
-          </div>
+              <div className="sideSection">
+                <h4>Instrument wallet</h4>
+                {primaryInstrument ? (
+                  <div className="instrument">
+                    <strong>
+                      {[primaryInstrument.brand, primaryInstrument.model]
+                        .filter(Boolean)
+                        .join(" ") || primaryInstrument.productName}
+                    </strong>
+                    <span>{primaryInstrument.productName}</span>
+                    <p>
+                      {calibrationDays === null
+                        ? "Calibration date not recorded"
+                        : calibrationDays < 0
+                        ? `Calibration overdue by ${Math.abs(calibrationDays)} days`
+                        : `Calibration due in ${calibrationDays} days`}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="instrument">
+                    <strong>No instrument stored</strong>
+                    <span>Add the customer's equipment to build reminders.</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="sideSection">
+                <h4>Quick actions</h4>
+                <div className="quickGrid">
+                  <button>Product</button>
+                  <button>Service</button>
+                  <button>Calibration</button>
+                  <button>Campaign</button>
+                </div>
+              </div>
+            </>
+          )}
         </aside>
       </section>
     </main>
