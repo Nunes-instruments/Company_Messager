@@ -61,6 +61,7 @@ model Customer {
   leads              Lead[]
   optOuts            OptOut[]
   auditLogs          AuditLog[]
+  portalTokens       CustomerPortalToken[]
 
   @@index([phone])
   @@index([email])
@@ -240,4 +241,20 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+
+model CustomerPortalToken {
+  id           String   @id @default(cuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tokenHash    String   @unique
+  label        String?
+  active       Boolean  @default(true)
+  expiresAt    DateTime?
+  lastUsedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([customerId, active])
+  @@index([expiresAt])
 }
