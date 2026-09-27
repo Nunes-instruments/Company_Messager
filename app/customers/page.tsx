@@ -120,12 +120,6 @@ export default function CustomersPage() {
 
 
   async function createPortalLink(customerId: string) {
-    const secret = window.prompt(
-      "Enter the Nunes admin action secret to create a secure customer portal link:"
-    );
-
-    if (!secret) return;
-
     setNotice("");
     setPortalLink(null);
 
@@ -134,7 +128,6 @@ export default function CustomersPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-action-secret": secret,
         },
         body: JSON.stringify({
           customerId,
