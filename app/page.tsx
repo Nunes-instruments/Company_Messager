@@ -241,6 +241,9 @@ export default function Home() {
           <Link className="navActive" href="/">
             <MessageCircleMore size={18} /> Messages
           </Link>
+          <Link href="/customers">
+            <Users size={18} /> Customers
+          </Link>
           <Link href="/campaigns">
             <Megaphone size={18} /> Campaigns
           </Link>
