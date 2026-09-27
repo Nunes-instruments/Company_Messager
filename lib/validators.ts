@@ -36,3 +36,33 @@ export const leadCreateSchema = z.object({
   assignedUserId: z.string().optional().nullable(),
   source: z.string().max(100).optional().nullable(),
 });
+
+
+export const campaignCreateSchema = z.object({
+  name: z.string().min(2).max(160),
+  type: z.enum(["PRODUCT", "SERVICE", "CALIBRATION", "REENGAGEMENT"]),
+  subject: z.string().max(200).optional().nullable(),
+  message: z.string().min(2).max(10000),
+  channel: z.enum(["NUNES_CONNECT", "EMAIL", "WHATSAPP"]),
+  scheduledAt: z.string().datetime().optional().nullable(),
+});
+
+export const serviceJobCreateSchema = z.object({
+  jobNumber: z.string().min(2).max(80),
+  customerId: z.string().min(1),
+  instrumentId: z.string().optional().nullable(),
+  assignedUserId: z.string().optional().nullable(),
+  problem: z.string().max(5000).optional().nullable(),
+});
+
+export const calibrationCreateSchema = z.object({
+  customerId: z.string().min(1),
+  instrumentId: z.string().optional().nullable(),
+  dueDate: z.string().datetime(),
+});
+
+export const optOutSchema = z.object({
+  customerId: z.string().min(1),
+  channel: z.enum(["NUNES_CONNECT", "EMAIL", "WHATSAPP"]),
+  reason: z.string().max(500).optional().nullable(),
+});
