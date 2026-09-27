@@ -45,6 +45,7 @@ export const campaignCreateSchema = z.object({
   message: z.string().min(2).max(10000),
   channel: z.enum(["NUNES_CONNECT", "EMAIL", "WHATSAPP"]),
   scheduledAt: z.string().datetime().optional().nullable(),
+  recipientCustomerIds: z.array(z.string().min(1)).max(5000).optional().default([]),
 });
 
 export const serviceJobCreateSchema = z.object({
