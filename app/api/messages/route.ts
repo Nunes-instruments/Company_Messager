@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { messageCreateSchema } from "@/lib/validators";
+import {
+  detectReplyIntent,
+  isPositiveIntent,
+  leadTypeFromIntent,
+} from "@/lib/reply-intent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,12 +52,18 @@ export async function POST(request: NextRequest) {
     }
 
     const isInternalChannel = parsed.data.channel === "NUNES_CONNECT";
+    const isInbound = parsed.data.direction === "INBOUND";
 
     const message = await tx.message.create({
       data: {
         ...parsed.data,
-        status: isInternalChannel ? "SENT" : "PENDING",
-        sentAt: isInternalChannel ? now : null,
+        status: isInternalChannel
+          ? isInbound
+            ? "DELIVERED"
+            : "SENT"
+          : "PENDING",
+        sentAt: isInternalChannel && !isInbound ? now : null,
+        deliveredAt: isInternalChannel && isInbound ? now : null,
       },
     });
 
@@ -66,21 +77,113 @@ export async function POST(request: NextRequest) {
       data: { lastContactAt: now },
     });
 
+    let replyIntent: string | null = null;
+    let createdLeadId: string | null = null;
+    let respondedCampaignId: string | null = null;
+
+    if (isInbound) {
+      replyIntent = detectReplyIntent(parsed.data.body);
+
+      const recentCampaignMessage = await tx.message.findFirst({
+        where: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          externalId: { startsWith: "campaign:" },
+          createdAt: {
+            gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (recentCampaignMessage?.externalId) {
+        const match = recentCampaignMessage.externalId.match(
+          /^campaign:([^:]+):recipient:([^:]+)$/
+        );
+
+        if (match) {
+          const [, campaignId, recipientId] = match;
+          respondedCampaignId = campaignId;
+
+          await tx.campaignRecipient.updateMany({
+            where: {
+              id: recipientId,
+              campaignId,
+              customerId: conversation.customerId,
+            },
+            data: {
+              respondedAt: now,
+              status: "READ",
+            },
+          });
+
+          const campaign = await tx.campaign.findUnique({
+            where: { id: campaignId },
+            select: { id: true, type: true, name: true },
+          });
+
+          if (campaign && isPositiveIntent(replyIntent)) {
+            const leadType = leadTypeFromIntent(replyIntent, campaign.type);
+
+            if (leadType) {
+              const duplicateLead = await tx.lead.findFirst({
+                where: {
+                  customerId: conversation.customerId,
+                  conversationId: conversation.id,
+                  source: `campaign:${campaign.id}`,
+                  status: {
+                    in: ["NEW", "ASSIGNED", "FOLLOW_UP", "QUOTATION"],
+                  },
+                },
+              });
+
+              if (!duplicateLead) {
+                const lead = await tx.lead.create({
+                  data: {
+                    customerId: conversation.customerId,
+                    conversationId: conversation.id,
+                    type: leadType,
+                    status: replyIntent === "QUOTATION" ? "QUOTATION" : "NEW",
+                    requirement: parsed.data.body,
+                    source: `campaign:${campaign.id}`,
+                  },
+                });
+
+                createdLeadId = lead.id;
+              } else {
+                createdLeadId = duplicateLead.id;
+              }
+            }
+          }
+        }
+      }
+    }
+
     await tx.auditLog.create({
       data: {
         customerId: conversation.customerId,
-        action: "MESSAGE_CREATED",
+        action: isInbound ? "CUSTOMER_REPLY_RECEIVED" : "MESSAGE_CREATED",
         entityType: "Message",
         entityId: message.id,
         metadata: {
           channel: parsed.data.channel,
           direction: parsed.data.direction,
+          replyIntent,
+          respondedCampaignId,
+          createdLeadId,
         },
       },
     });
 
-    return message;
+    return {
+      message,
+      replyAutomation: {
+        intent: replyIntent,
+        campaignId: respondedCampaignId,
+        leadId: createdLeadId,
+      },
+    };
   });
 
-  return NextResponse.json({ message: result }, { status: 201 });
+  return NextResponse.json(result, { status: 201 });
 }
