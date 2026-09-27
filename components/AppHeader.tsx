@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import LogoutButton from "@/components/LogoutButton";
 import {
   Bell,
   Megaphone,
@@ -8,6 +9,7 @@ import {
   Target,
   Settings,
   ShieldCheck,
+  UserCog,
   Users,
   Wrench,
 } from "lucide-react";
@@ -48,7 +50,11 @@ export default function AppHeader({
       </nav>
       <div className="topActions">
         <button className="iconButton" aria-label="Notifications"><Bell size={20} /></button>
+        <Link className="iconButton headerIconLink" href="/staff" aria-label="Staff access" title="Staff access">
+          <UserCog size={20} />
+        </Link>
         <button className="iconButton" aria-label="Settings"><Settings size={20} /></button>
+        <LogoutButton />
         <div className="ownerBadge">SN</div>
       </div>
     </header>
