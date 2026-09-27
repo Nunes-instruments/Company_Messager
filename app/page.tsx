@@ -16,6 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
+import LogoutButton from "@/components/LogoutButton";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -300,9 +301,13 @@ export default function Home() {
           <button className="iconButton" aria-label="Notifications">
             <Bell size={20} />
           </button>
+          <Link className="iconButton headerIconLink" href="/staff" aria-label="Staff access" title="Staff access">
+            <UserCog size={20} />
+          </Link>
           <button className="iconButton" aria-label="Settings">
             <Settings size={20} />
           </button>
+          <LogoutButton />
           <div className="ownerBadge">SN</div>
         </div>
       </header>
