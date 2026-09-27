@@ -1,7 +1,7 @@
 "use client";
 
 import AppHeader from "@/components/AppHeader";
-import { ArrowRight, Mail, Megaphone, MessageCircleMore, Plus, Search, Sparkles, Users } from "lucide-react";
+import { ArrowRight, BarChart3, Mail, Megaphone, MessageCircleMore, Play, Plus, Search, Sparkles, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 type Campaign = {
@@ -38,6 +38,8 @@ export default function CampaignsPage() {
   const [campaignMessage, setCampaignMessage] = useState("");
   const [campaignType, setCampaignType] = useState("PRODUCT");
   const [notice, setNotice] = useState("");
+  const [runningCampaignId, setRunningCampaignId] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<Record<string, any>>({});
 
   async function loadCampaigns() {
     const response = await fetch("/api/campaigns", { cache: "no-store" });
@@ -74,6 +76,53 @@ export default function CampaignsPage() {
     () => campaigns.filter((campaign) => ["SCHEDULED", "RUNNING"].includes(campaign.status)).length,
     [campaigns]
   );
+
+
+  async function runCampaign(campaign: Campaign) {
+    if (campaign.channel !== "NUNES_CONNECT") {
+      setNotice(`${campaign.channel.replace("_", " ")} sending is not connected yet. Configure its provider before execution.`);
+      return;
+    }
+
+    setRunningCampaignId(campaign.id);
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/campaigns/${campaign.id}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchSize: 100 }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Campaign execution failed");
+      }
+
+      setNotice(
+        `Campaign processed: ${payload.sent} sent, ${payload.remainingPending} pending.`
+      );
+      await Promise.all([loadCampaigns(), loadAnalytics(campaign.id)]);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Campaign execution failed");
+    } finally {
+      setRunningCampaignId(null);
+    }
+  }
+
+  async function loadAnalytics(campaignId: string) {
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/analytics`, {
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error ?? "Could not load analytics");
+      setAnalytics((current) => ({ ...current, [campaignId]: payload }));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not load analytics");
+    }
+  }
 
   async function createCampaign() {
     if (!campaignName.trim() || !campaignMessage.trim()) {
@@ -186,14 +235,49 @@ export default function CampaignsPage() {
           <div className="panelHeading"><div><h2>Saved campaigns</h2><p>Live campaign records from PostgreSQL</p></div><Megaphone size={20} /></div>
           <div className="tableList">
             {campaigns.length === 0 && <div className="emptyState">No campaigns created yet.</div>}
-            {campaigns.map((campaign) => (
-              <div className="tableRow" key={campaign.id}>
-                <div><strong>{campaign.name}</strong><span>{campaign._count?.recipients ?? 0} recipients attached</span></div>
-                <span>{campaign.channel.replace("_", " ")}</span>
-                <span className={"pill " + campaign.status.toLowerCase()}>{campaign.status}</span>
-                <button className="rowAction"><ArrowRight size={17} /></button>
-              </div>
-            ))}
+            {campaigns.map((campaign) => {
+              const stats = analytics[campaign.id]?.delivery;
+              return (
+                <div className="campaignRecord" key={campaign.id}>
+                  <div className="tableRow campaignMainRow">
+                    <div>
+                      <strong>{campaign.name}</strong>
+                      <span>{campaign._count?.recipients ?? 0} recipients attached</span>
+                    </div>
+                    <span>{campaign.channel.replace("_", " ")}</span>
+                    <span className={"pill " + campaign.status.toLowerCase()}>{campaign.status}</span>
+                    <div className="campaignRowActions">
+                      <button
+                        className="rowAction"
+                        title="Analytics"
+                        onClick={() => loadAnalytics(campaign.id)}
+                      >
+                        <BarChart3 size={16} />
+                      </button>
+                      <button
+                        className="rowAction runAction"
+                        title="Run campaign"
+                        disabled={runningCampaignId === campaign.id || campaign.status === "COMPLETED"}
+                        onClick={() => runCampaign(campaign)}
+                      >
+                        {runningCampaignId === campaign.id ? "…" : <Play size={15} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {stats && (
+                    <div className="campaignAnalyticsStrip">
+                      <span><strong>{stats.pending}</strong> Pending</span>
+                      <span><strong>{stats.sent}</strong> Sent</span>
+                      <span><strong>{stats.delivered}</strong> Delivered</span>
+                      <span><strong>{stats.read}</strong> Read</span>
+                      <span><strong>{stats.responded}</strong> Responses</span>
+                      <span><strong>{stats.linkedLeads}</strong> Leads</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
 
